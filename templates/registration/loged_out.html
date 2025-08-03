@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+{% block title %}已登出{% endblock %}
+
+{% block content %}
+    <h2>您已成功登出。</h2>
+    <form id="logout-form" action="{% url 'logout' %}" method="post" style="display: inline;">
+        {% csrf_token %}
+        <a href="#" onclick="document.getElementById('logout-form').submit(); return false;">登出</a>
+    </form>
+{% endblock %}

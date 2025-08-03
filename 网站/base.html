@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+{% load static %}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}我的云盘{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+    <!-- <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"> -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* ==================== 基础和布局样式 ==================== */
+        body {
+            /* font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; */
+            font-family: 'Ma Shan Zheng', cursive;
+            font-size: large;
+            margin: 0;
+            background-color: #f0f2f5; /* 更柔和的背景色 */
+            color: #333;
+            line-height: 1.6;
+            /* 其他可能的 body 样式 */
+            background-image: url('{% static 'images/desk.jpg' %}');
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed; /* 这个是可选的，如果你想背景图固定不动 */
+            min-height: 100vh; /* 确保 body 足够高，以便覆盖层能覆盖整个视口 */
+            position: relative; /* 如果 body 的子元素需要定位，可以加上这个 */
+        }
+        /* --- 手机和平板设备专用样式 --- */
+        @media (max-width: 768px) {
+        body {
+            background-image: url('{% static 'images/phone.jpg' %}'); /* 手机版图片 */
+            background-size: contain; /* 或者仍然是 cover，取决于手机版图片的设计 */
+            background-position: center;
+        }
+        }
+        .frosted-glass-overlay {
+        position: absolute; /* 相对于 body 定位 */
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        /* background-color: rgba(255, 255, 255, 0.1); */ /* 轻微的白色半透明背景 */
+        background-color: rgba(215, 215, 215, 0.2); /* 或者轻微的黑色半透明背景，根据你的背景图和文字颜色选择 */
+        backdrop-filter: blur(8px); /* 关键：模糊效果的强度 */
+        -webkit-backdrop-filter: blur(8px); /* 针对 Safari 浏览器 */
+        z-index: -1; /* 确保它在你的内容下方，但仍在背景图上方 */
+        }
+
+        /* 新增：新建文件夹输入框样式 */
+        .folder-name-input {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px; /* 较小的圆角 */
+            font-size: 15px;
+            width: 200px; /* 默认宽度 */
+            box-sizing: border-box;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .folder-name-input:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+            outline: none;
+        }
+
+        nav {
+            background: #fff;
+            color: #333;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); /* 导航栏添加轻微阴影 */
+        }
+
+        nav a {
+            color: #007bff;
+            text-decoration: none;
+            margin: 0 1rem;
+            font-weight: 500;
+            transition: color 0.2s ease-in-out; /* 链接颜色过渡 */
+        }
+
+        nav a:hover {
+            color: #0056b3; /* 鼠标悬停效果 */
+        }
+
+        nav a.brand {
+            font-size: 1.8rem; /* 品牌名称字体加大 */
+            font-weight: 700; /* 加粗 */
+            color: #333; /* 品牌名称颜色与普通链接区分 */
+            margin-right: 2rem;
+        }
+
+        .container {
+            padding: 2rem;
+            max-width: 1280px; /* 增加最大宽度 */
+            margin: auto;
+        }
+
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); /* 调整minmax，适应更多屏幕 */
+            gap: 1.5rem;
+        }
+
+        /* ==================== 文件/文件夹卡片基础样式 ==================== */
+        .file-item {
+            background: #fff;
+            border-radius: 12px; /* 稍大圆角 */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* 更明显的阴影 */
+            overflow: hidden;
+            /* 调整为flex布局，使得预览和信息区域垂直堆叠 */
+            display: flex;
+            flex-direction: column;
+            text-align: center;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; /* 添加动画 */
+        }
+
+        .file-item:hover {
+            transform: translateY(-5px); /* 悬停上浮效果 */
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12); /* 悬停阴影加深 */
+        }
+
+        .file-item .preview {
+            height: 140px; /* 预览高度稍作调整 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e9ecef; /* 预览背景色 */
+            /* border-bottom: 1px solid #f0f0f0; */ /* 移除预览和信息区域的边框，由.info自己处理顶部边框 */
+            padding: 10px; /* 增加内边距避免内容贴边 */
+            flex-shrink: 0; /* 防止预览区域被压缩 */
+        }
+
+        .file-item img, .file-item video {
+            max-width: 100%;
+            max-height: 100%;
+            height: auto;
+            width: auto;
+            object-fit: contain; /* 确保图片完整显示 */
+        }
+
+        /* 优化过的 .info 区域样式 */
+        .file-item .info {
+            padding: 0.75rem 1rem; /* 增加内边距 */
+            background-color: #ffffff; /* 确保纯白背景 */
+            border-top: 1px solid #eee; /* 顶部边框确保分离 */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 50px; /* 确保信息区域有最小高度 */
+            box-sizing: border-box; /* 确保padding包含在高度内 */
+            position: relative; /* 确保z-index有效 */
+            z-index: 2; /* 确保文件名在图片之上 */
+        }
+
+        /* 这是为文件名span元素本身添加的样式 */
+        .file-item .info .editable-name {
+            word-break: break-all;
+            font-size: 0.95rem; /* 文件名稍大 */
+            color: #333;
+            text-align: left;
+            flex-grow: 1;
+            margin-right: 0.8rem;
+            cursor: text;
+            /* 增加一个背景色或者衬托，确保在任何情况下都清晰 */
+            background-color: #ffffff; /* 再次强调白底，虽然父级已有 */
+            padding: 2px 0; /* 增加一点上下内边距，让文字不那么贴边 */
+        }
+
+        .item-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            /* 确保点击区域是整个文件项，但文件名区域不被预览覆盖 */
+            display: flex;
+            flex-direction: column; /* 保持垂直堆叠 */
+            height: 100%; /* 确保链接占据整个文件项高度 */
+        }
+
+        /* ==================== 选择模式相关样式 ==================== */
+        .item-container {
+            position: relative;
+            border: 2px solid transparent;
+            border-radius: 12px; /* 配合卡片圆角 */
+            transition: all 0.2s ease-in-out;
+            height: 100%; /* 确保容器填充父级高度 */
+        }
+        .item-container.selected {
+            border-color: #007bff;
+            background-color: #e7f3ff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2); /* 选中时添加外边框阴影 */
+        }
+        .item-checkbox {
+            position: absolute;
+            top: 12px; /* 调整位置 */
+            left: 12px; /* 调整位置 */
+            width: 24px; /* 稍大 */
+            height: 24px; /* 稍大 */
+            z-index: 10;
+            cursor: pointer;
+            accent-color: #007bff; /* 更改复选框颜色 */
+        }
+
+        /* ==================== 顶部上下文操作栏样式 ==================== */
+        .actions-bar {
+            position: sticky;
+            top: 0;
+            width: 100%;
+            background-color: #343a40;
+            color: white;
+            padding: 0.75rem 2rem; /* 增加左右内边距 */
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15); /* 阴影更明显 */
+            margin: -2rem -2rem 1.5rem -2rem;
+            border-radius: 0 0 8px 8px; /* 底部圆角 */
+        }
+        .action-btn {
+            padding: 0.6rem 1.2rem; /* 调整按钮大小 */
+            border: 1px solid white;
+            background: transparent;
+            color: white;
+            cursor: pointer;
+            margin-left: 1rem;
+            border-radius: 6px; /* 稍大圆角 */
+            font-size: 15px; /* 字体稍大 */
+            transition: all 0.2s ease;
+            display: inline-flex; /* 允许图标和文字对齐 */
+            align-items: center;
+            gap: 5px; /* 图标和文字间距 */
+        }
+        .action-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px); /* 悬停上浮效果 */
+        }
+        .action-btn.delete:hover { background-color: #dc3545; border-color: #dc3545; }
+        .action-btn.move:hover { background-color: #ffc107; color: black; border-color: #ffc107; }
+        .action-btn.download:hover { background-color: #17a2b8; border-color: #17a2b8; }
+
+
+        /* ==================== “上传文件夹”按钮美化样式 ==================== */
+        .button-like-label {
+            padding: 8px 16px; /* 调整大小 */
+            background-color: #28a745;
+            color: white;
+            border: 1px solid #28a745;
+            border-radius: 6px; /* 调整圆角 */
+            cursor: pointer;
+            font-size: 15px; /* 调整字体大小 */
+            line-height: 1.5;
+            display: inline-flex; /* 允许图标和文字对齐 */
+            align-items: center;
+            gap: 5px; /* 图标和文字间距 */
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .button-like-label:hover {
+            background-color: #218838;
+            transform: translateY(-2px); /* 悬停上浮效果 */
+        }
+
+        /* ==================== 移动模态框样式 ==================== */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 200;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6); /* 稍微深一点的背景 */
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.visible {
+            display: flex;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            padding: 30px; /* 增加内边距 */
+            border: none; /* 移除边框 */
+            width: 90%; /* 增加宽度 */
+            max-width: 550px; /* 增加最大宽度 */
+            border-radius: 12px; /* 稍大圆角 */
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2); /* 更明显的阴影 */
+            animation: fadeIn 0.3s ease-out; /* 模态框弹出动画 */
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            color: #333;
+            font-size: 1.8rem;
+            text-align: center;
+        }
+
+        #folder-list {
+            max-height: 300px; /* 限制高度并允许滚动 */
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+        #folder-list .folder-item {
+            padding: 12px 15px; /* 调整内边距 */
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #folder-list .folder-item:last-child {
+            border-bottom: none;
+        }
+        #folder-list .folder-item:hover { background-color: #f6f6f6; }
+        #folder-list .folder-item.selected-dest { background-color: #d4edda; font-weight: bold; color: #155724; }
+
+        .modal-footer {
+            padding-top: 1.5rem; /* 增加顶部间距 */
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+        .modal-footer .action-btn {
+            border: 1px solid #ccc;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .modal-footer .action-btn.move {
+            background-color: #007bff;
+            border-color: #007bff;
+            color: white;
+        }
+        .modal-footer .action-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        /* ==================== 灯箱(Lightbox)样式 ==================== */
+        .lightbox {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.95); /* 更深的背景，突出内容 */
+            backdrop-filter: blur(5px); /* 磨砂玻璃效果 */
+            animation: fadeIn 0.3s ease-out; /* 弹出动画 */
+        }
+
+        .lightbox-image-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        #lightbox-media-container img,
+        #lightbox-media-container video {
+            max-width: 95vw; /* 稍微大一点的预览区域 */
+            max-height: 95vh;
+            border-radius: 8px; /* 圆角 */
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); /* 媒体内容阴影 */
+            object-fit: contain; /* 确保媒体内容完整显示 */
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            color: #f1f1f1;
+            font-size: 48px; /* 叉号更大 */
+            font-weight: bold;
+            transition: 0.3s;
+            cursor: pointer;
+            z-index: 1002;
+        }
+        .lightbox-close:hover,
+        .lightbox-close:focus {
+            color: #ccc; /* 鼠标悬停变亮 */
+            text-decoration: none;
+        }
+
+        .lightbox-prev, .lightbox-next {
+            cursor: pointer;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: auto;
+            padding: 18px; /* 调整内边距 */
+            color: white;
+            font-weight: bold;
+            font-size: 26px; /* 字体加大 */
+            transition: 0.6s ease;
+            border-radius: 6px; /* 增加圆角 */
+            user-select: none;
+            -webkit-user-select: none;
+            z-index: 1002;
+            background-color: rgba(0,0,0,0.3); /* 箭头背景色 */
+        }
+        .lightbox-prev {
+            left: 15px; /* 距离左侧边距 */
+        }
+        .lightbox-next {
+            right: 15px; /* 距离右侧边距 */
+            border-radius: 6px; /* 保持一致的圆角 */
+        }
+        .lightbox-prev:hover, .lightbox-next:hover {
+            background-color: rgba(0,0,0,0.7); /* 悬停时背景更深 */
+        }
+
+        .lightbox-controls {
+            position: absolute;
+            bottom: 25px; /* 距离底部稍远 */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(30,30,30,0.8); /* 更深的背景 */
+            border-radius: 25px; /* 更大圆角 */
+            padding: 8px 15px; /* 调整内边距 */
+            display: flex;
+            gap: 10px; /* 按钮间距 */
+            z-index: 1001;
+        }
+        .lightbox-controls button {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 28px; /* 按钮图标更大 */
+            font-weight: bold;
+            width: 45px; /* 按钮大小 */
+            height: 45px;
+            line-height: 45px;
+            text-align: center;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .lightbox-controls button:hover {
+            background-color: rgba(80,80,80,0.8);
+        }
+
+        .search-form {
+            display: flex;
+            border-radius: 5px;
+            overflow: hidden; /* 确保边框和圆角一致 */
+        }
+        .search-form input[type="text"] {
+            padding: 8px 12px; /* 调整内边距 */
+            border: 1px solid #ccc;
+            border-right: none; /* 移除右边框实现无缝连接 */
+            border-radius: 5px 0 0 5px;
+            outline: none;
+            font-size: 15px;
+            width: 200px; /* 默认宽度 */
+            box-sizing: border-box; /* 包含padding和border在宽度内 */
+        }
+        .search-form input[type="text"]:focus {
+            border-color: #007bff; /* 聚焦时边框颜色 */
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        .search-form button {
+            padding: 8px 15px; /* 调整内边距 */
+            border: 1px solid #007bff;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            border-radius: 0 5px 5px 0;
+            font-size: 15px;
+            transition: background-color 0.2s ease;
+        }
+        .search-form button:hover {
+            background-color: #0056b3; /* 悬停颜色 */
+        }
+
+        mark {
+            background-color: #fffb8f;
+            padding: 0 3px;
+            color: inherit;
+            border-radius: 3px;
+        }
+        /* 新增！上传进度条样式 */
+        #upload-progress-container {
+            background-color: #e9ecef;
+            border-radius: 8px; /* 稍大圆角 */
+            padding: 1.5rem; /* 增加内边距 */
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); /* 内部阴影 */
+            margin-top: 1.5rem; /* 顶部间距 */
+            display: none; /* 默认隐藏，由JS控制显示 */
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #dee2e6; /* 进度条背景 */
+            height: 25px; /* 增加高度 */
+            border-radius: 12px; /* 稍大圆角 */
+            margin: 0.8rem 0; /* 调整上下间距 */
+            overflow: hidden; /* 隐藏溢出内容 */
+        }
+        .progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background-color: #28a745; /* 进度条填充颜色改为绿色，更符合上传成功 */
+            border-radius: 12px;
+            transition: width 0.3s ease-out; /* 更平滑的过渡 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        .progress-text {
+            font-size: 0.95rem;
+            color: #555;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        .progress-file-name {
+            font-weight: 600;
+            color: #007bff;
+            word-break: break-all;
+        }
+
+        /* --- 响应式设计：媒体查询 --- */
+
+        /* 针对小屏幕 (手机) */
+        @media (max-width: 768px) {
+            nav {
+                flex-direction: column; /* 导航项垂直堆叠 */
+                align-items: flex-start;
+                padding: 1rem 1rem;
+            }
+            nav .nav-left,
+            nav .nav-right {
+                width: 100%;
+                justify-content: space-between;
+                margin-bottom: 10px;
+            }
+            nav .nav-left {
+                flex-wrap: wrap; /* 允许搜索框换行 */
+                gap: 1rem; /* 调整间距 */
+            }
+            nav a.brand {
+                font-size: 1.5rem;
+                margin-right: 0;
+            }
+            nav a {
+                margin: 0.5rem 0.5rem 0.5rem 0; /* 调整链接间距 */
+            }
+
+            /* 优化搜索表单 */
+            .search-form {
+                flex-direction: column; /* 搜索框和按钮垂直堆叠 */
+                width: 100%;
+                margin-top: 10px;
+                border-radius: 5px; /* 统一圆角 */
+                overflow: hidden;
+            }
+            .search-form input[type="text"] {
+                width: 100%; /* 搜索输入框全宽 */
+                border-radius: 5px 5px 0 0; /* 顶部圆角，底部直角 */
+                border-right: 1px solid #ccc; /* 恢复右边框 */
+                box-sizing: border-box; /* 确保padding和border包含在宽度内 */
+            }
+            .search-form button {
+                width: 100%; /* 搜索按钮全宽 */
+                border-radius: 0 0 5px 5px; /* 底部圆角，顶部直角 */
+                margin-top: -1px; /* 消除边框重叠 */
+                box-sizing: border-box; /* 确保padding和border包含在宽度内 */
+            }
+
+            .container {
+                padding: 1rem;
+            }
+            .file-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* 手机上每行文件更少 */
+                gap: 1rem;
+            }
+            .actions-bar {
+                flex-direction: column;
+                padding: 0.75rem 1rem;
+                margin: -1rem -1rem 1rem -1rem; /* 调整margin */
+            }
+            .actions-bar > div {
+                width: 100%;
+                display: flex;
+                justify-content: center; /* 按钮居中 */
+                margin-top: 0.5rem;
+                flex-wrap: wrap; /* 允许操作按钮换行 */
+                gap: 0.5rem; /* 操作按钮之间的间距 */
+            }
+            .action-btn {
+                /* 在这里修改 action-btn 以适应 flex-wrap 的父级 */
+                width: calc(50% - 0.5rem); /* 按钮占据一半宽度，减去gap */
+                margin: 0; /* 移除以前的 margin-left/right */
+                font-size: 14px;
+                box-sizing: border-box; /* 确保padding和border包含在宽度内 */
+            }
+            /* 确保全选复选框和数量显示布局正常 */
+            .actions-bar .selection-controls {
+                width: 100%;
+                justify-content: center; /* 让全选和数量居中 */
+                margin-bottom: 0.5rem; /* 与下方按钮组的间距 */
+            }
+            
+            .modal-content {
+                width: 95%; /* 手机上模态框宽度更大 */
+                padding: 20px;
+            }
+            .lightbox-close {
+                top: 10px;
+                right: 20px;
+                font-size: 36px;
+            }
+            .lightbox-prev, .lightbox-next {
+                font-size: 20px;
+                padding: 12px;
+            }
+            .lightbox-controls {
+                bottom: 10px;
+                padding: 5px 10px;
+            }
+            .lightbox-controls button {
+                font-size: 20px;
+                width: 35px;
+                height: 35px;
+                line-height: 35px;
+            }
+
+            /* 优化 actions-container 区域的布局：新建文件夹和上传按钮 */
+            .actions-container {
+                flex-direction: column; /* 让整个容器内容垂直堆叠 */
+                align-items: stretch; /* 让内部项拉伸到容器宽度 */
+                gap: 1rem; /* 元素之间的垂直间距 */
+            }
+
+            .actions-container form { /* 新建文件夹表单 */
+                flex-direction: column; /* 内部元素（输入框和按钮）垂直堆叠 */
+                width: 100%; /* 占据父容器的整个宽度 */
+                gap: 0.8rem; /* 输入框和按钮之间的间距 */
+                align-items: stretch; /* 内部元素拉伸 */
+            }
+
+            .folder-name-input {
+                width: 100%; /* 输入框占据完整宽度 */
+                min-width: unset; /* 移除最小宽度限制 */
+                margin-right: 0; /* 移除右侧间距 */
+                /* box-sizing: border-box; 已经在通用样式中定义了 */
+            }
+            /* 新建文件夹按钮 - 如果它在 form 内部，并且 form 也是 column 布局，它也会自然占据宽度 */
+            .actions-container form .action-btn { 
+                width: 100%;
+                margin: 0; /* 移除左右 margin */
+                justify-content: center; /* 居中内容 */
+            }
+
+
+            /* 上传文件和上传文件夹按钮的label */
+            .button-like-label {
+                width: 100%; /* 占据整行 */
+                justify-content: center; /* 图标和文字居中对齐 */
+                margin: 0; /* 移除左右间距 */
+                /* box-sizing: border-box; 已经在通用样式中定义了 */
+            }
+            /* 确保文件上传 input 本身不影响布局（它已经是 display: none） */
+            #file-upload-input, #folder_upload_input {
+                display: none;
+            }
+        }
+
+        /* 针对平板 (中等屏幕) */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .container {
+                padding: 1.5rem;
+            }
+            .file-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 1.2rem;
+            }
+            nav {
+                padding: 1rem 1.5rem;
+            }
+            .actions-bar {
+                padding: 0.75rem 1.5rem;
+                margin: -1.5rem -1.5rem 1.5rem -1.5rem;
+            }
+            .search-form input[type="text"] {
+                width: 180px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    
+        <nav>
+            <div class="nav-left" style="display: flex; align-items: center; gap: 2rem;">
+                <a href="{% url 'album:file_list_root' %}" class="brand">小狗咪云盘</a>
+                
+                <form action="{% url 'album:search' %}" method="get" class="search-form">
+                    <input type="text" name="q" placeholder="搜索文件或文件夹..." value="{{ query|default:'' }}">
+                    <button type="submit"><i class="fas fa-search"></i> 搜索</button> </form>
+            </div>
+
+            <div class="nav-right">
+                {% if user.is_authenticated %}
+                    <span>你好, {{ user.username }}小狗咪!</span>
+                    <form id="logout-form" action="{% url 'logout' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <a href="#" onclick="document.getElementById('logout-form').submit(); return false;"><i class="fas fa-sign-out-alt"></i> 登出</a> </form>
+                {% else %}
+                    <a href="{% url 'login' %}"><i class="fas fa-sign-in-alt"></i> 登录</a> {% endif %}
+            </div>
+        </nav>
+    <div class="frosted-glass-overlay"></div>
+    <div class="container">
+        <div id="actionBar" class="actions-bar">
+            <div class="selection-controls" style="display: flex; align-items: center; gap: 1rem;"> {# 新增此 div 以更好地组织 #}
+                <label for="select-all-checkbox" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: white;">
+                    <input type="checkbox" id="select-all-checkbox" title="全选/全不选">
+                    <span>全选</span>
+                </label>
+                <span id="selectedCount">0 个项目已选中</span>
+            </div>
+            <div>
+                <button class="action-btn download" id="downloadSelectedBtn"><i class="fas fa-download"></i> 下载</button>
+                <button class="action-btn move" id="moveBtn"><i class="fas fa-arrows-alt"></i> 移动</button>
+                <button class="action-btn delete" id="deleteBtn"><i class="fas fa-trash-alt"></i> 删除</button>
+                <button class="action-btn" id="cancelSelectionBtn"><i class="fas fa-times"></i> 取消</button>
+            </div>
+        </div>
+
+        {% block content %}{% endblock %}
+
+        <div id="moveModal" class="modal">
+            <div class="modal-content">
+                <h2>移动到...</h2>
+                <div id="folder-list">
+                    </div>
+                <div class="modal-footer">
+                    <button class="action-btn" id="cancelMoveBtn"><i class="fas fa-times"></i> 取消</button>
+                    <button class="action-btn move" id="confirmMoveBtn"><i class="fas fa-check"></i> 确认移动</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="lightbox" class="lightbox">
+            <span class="lightbox-close" id="lightboxClose">&times;</span>
+            <span class="lightbox-prev" id="lightboxPrev">&#10094;</span>
+            <span class="lightbox-next" id="lightboxNext">&#10095;</span>
+            <div class="lightbox-image-wrapper">
+                <div id="lightbox-media-container">
+                    </div>
+            </div>
+            <div class="lightbox-controls">
+                <button id="zoomOutBtn"><i class="fas fa-search-minus"></i></button>
+                <button id="zoomInBtn"><i class="fas fa-search-plus"></i></button>
+                <button id="rotateLeftBtn"><i class="fas fa-undo-alt"></i></button>
+                <button id="rotateRightBtn"><i class="fas fa-redo-alt"></i></button>
+            </div>
+        </div>
+
+        <div id="upload-progress-container" style="display: none;">
+            <p>上传中: <span id="upload-file-name"></span></p>
+            <div class="progress-bar">
+                <div class="progress-bar-fill" id="upload-progress-fill" style="width: 0%;"></div>
+            </div>
+            <p><span id="upload-percentage">0%</span> 已完成</p>
+        </div>
+
+    </div>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

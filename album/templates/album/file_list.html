@@ -1,0 +1,782 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    {% if current_folder %}{{ current_folder.name }}{% else %}我的云盘{% endif %}
+{% endblock %}
+
+{% block content %}
+    {# 这里的 actions-bar 已被移除。现在将使用 base.html 中定义的 id="actionBar" #}
+    {# 原始的 actions-bar 结构和 ID 现在由 base.html 提供，JS 代码也已适配。 #}
+
+    <nav aria-label="breadcrumb" style="margin-bottom: 1.5rem;">
+        <ol style="display: flex; list-style: none; padding: 0; margin: 0; align-items: center; flex-wrap: wrap;">
+            <li><a href="{% url 'album:file_list_root' %}" style="color: #007bff; text-decoration: none; font-weight: 500;">主页</a></li>
+            {% for folder in breadcrumbs %}
+                <li style="margin: 0 0.5rem; color: #6c757d;">/</li>
+                <li><a href="{% url 'album:file_list_folder' folder.id %}" style="color: #007bff; text-decoration: none; font-weight: 500;">{{ folder.name }}</a></li>
+            {% endfor %}
+        </ol>
+    </nav>
+    
+    <div class="actions-container" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+        <form action="{% if current_folder %}{% url 'album:create_subfolder' current_folder.id %}{% else %}{% url 'album:create_folder' %}{% endif %}" method="post" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+            {% csrf_token %}
+            {{ folder_form.name }}
+            <button type="submit" class="action-btn" style="background-color: #007bff; border-color: #007bff; color: white;">
+                <i class="fas fa-plus-circle"></i> 新建文件夹
+            </button>
+        </form>
+        
+        {# ==== 文件上传表单 - 保持原有结构，但确保ID一致 ==== #}
+        <form id="file-upload-form" action="{% if current_folder %}{% url 'album:upload_file_folder' current_folder.id %}{% else %}{% url 'album:upload_file_root' %}{% endif %}" method="post" enctype="multipart/form-data" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+            {% csrf_token %}
+            {# 将 input 的 ID 改回 'file-upload-input' 并绑定到 label for #}
+            <label for="file-upload-input" class="button-like-label">
+                <i class="fas fa-upload"></i> 上传文件
+            </label>
+            <input type="file" id="file-upload-input" name="files" multiple required style="display: none;">
+            {# 原始代码中这里有一个提交按钮，但JS阻止了默认提交并处理上传。 #}
+            {# 如果你的JS是通过form.submit()触发的，这里需要一个可见的<button type="submit"> #}
+            {# 但根据你之前的JS，它监听的是form的submit事件，所以input change可能更自然 #}
+            {# 保持原样，通过JS监听file-upload-form的submit事件 #}
+        </form>
+
+        {# ==== 文件夹上传输入框 - 保持原有结构和ID ==== #}
+        <div>
+            <label for="folder_upload_input" class="button-like-label" id="folder_upload_label">
+                <i class="fas fa-folder-open"></i> 上传文件夹
+            </label>
+            <input id="folder_upload_input" type="file" name="files" webkitdirectory multiple style="display: none;">
+        </div>
+    </div>
+
+    <h4>文件夹</h4>
+    <hr style="border-top: 1px solid #ddd; margin-bottom: 1.5rem;">
+    {% if not folders and not files and not current_folder %}
+        <p style="color: #6c757d;">你还没有任何文件或文件夹。快来创建一个吧！</p>
+    {% elif not folders and not files %}
+        <p style="color: #6c757d;">这个文件夹是空的。</p>
+    {% endif %}
+    
+    <div class="file-grid">
+        {% for folder in folders %}
+            <div class="item-container" data-id="folder-{{ folder.id }}" data-type="folder">
+                <input type="checkbox" class="item-checkbox">
+                <div class="file-item">
+                    <a href="{% url 'album:file_list_folder' folder.id %}" class="item-link" title="打开文件夹 {{ folder.name }}">
+                        <div class="preview"><span style="font-size: 4rem; color: #ffc107;">📁</span></div>
+                    </a>
+                    <div class="info">
+                        <span class="editable-name" title="双击重命名">{{ folder.name|truncatechars:20 }}</span>
+                        <a href="{% url 'album:download_folder_as_zip' folder.id %}" title="打包下载此文件夹" style="color: #007bff; font-size: 1.2rem; text-decoration: none;" onclick="event.stopPropagation();">
+                            &#x21E9;
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if files %}
+    <h4 style="margin-top: 2rem;">文件</h4>
+    <hr style="border-top: 1px solid #ddd; margin-bottom: 1.5rem;">
+    <div class="file-grid">
+        {% for file in files %}
+            <div class="item-container" data-id="file-{{ file.id }}" data-type="file">
+                <input type="checkbox" class="item-checkbox">
+                <div class="file-item">
+                    <div class="preview">
+                        {% if file.file_type == 'image' or file.file_type == 'gif' %}
+                            <a href="{{ file.file.url }}" target="_blank" title="点击预览大图"><img src="{{ file.file.url }}" alt="{{ file.file.name }}"></a>
+                        {% elif file.file_type == 'video' %}
+                            <a href="{{ file.file.url }}" class="item-link" title="点击预览视频 {{ file.file.name }}">
+                                <video preload="metadata" muted playsinline disablepictureinpicture>
+                                    <source src="{{ file.file.url }}#t=0.5">
+                                </video>
+                            </a>
+                        {% else %}
+                            <a href="{{ file.file.url }}" download="{{ file.file.name }}" title="下载文件"><span style="font-size: 4rem;">📄</span></a>
+                        {% endif %}
+                    </div>
+                    <div class="info">
+                        <span class="editable-name" title="双击重命名">{{ file.file.name|truncatechars:20 }}</span>
+                        <a href="{{ file.file.url }}" download="{{ file.file.name }}" title="{{ file.file.name }}" class="item-link">
+                        </a>
+                        
+                        <a href="{{ file.file.url }}" download="{{ file.file.name }}" title="下载此文件" style="color: #007bff; font-size: 1.2rem; text-decoration: none;">
+                            &#x21E9; 
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+    {{ folder_tree|json_script:"folder-tree-data" }}
+    {{ files_for_json|json_script:"files-data" }}
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("【诊断】脚本开始执行，页面DOM已加载。");
+        // =================================================================
+        // 【可复用的、带进度条的上传函数】
+        // 确保这里引用的ID是base.html中进度条的ID
+        // =================================================================
+        function uploadWithProgress(url, formData, onFinish) {
+            // 这里将变量名更新为 base.html 中对应的 ID
+            const progressContainer = document.getElementById('upload-progress-container');
+            const progressBarFill = document.getElementById('upload-progress-fill'); // base.html 中的 ID
+            const progressText = document.getElementById('upload-percentage'); // base.html 中的 ID
+            const uploadFileName = document.getElementById('upload-file-name'); // base.html 中的 ID
+            
+            if (!progressContainer || !progressBarFill || !progressText || !uploadFileName) {
+                console.error("错误：找不到进度条相关的HTML元素！");
+                onFinish(false, { error: '页面UI错误，无法找到进度条元素。'});
+                return;
+            }
+
+            // 1. 创建 XHR 对象
+            const xhr = new XMLHttpRequest();
+            
+            // 2. 监听 onprogress 事件
+            xhr.upload.addEventListener('progress', function(event) {
+                if (event.lengthComputable) {
+                    const percentComplete = Math.round((event.loaded / event.total) * 100);
+                    progressBarFill.style.width = percentComplete + '%';
+                    progressText.textContent = percentComplete + '%';
+                }
+            });
+            
+            // 3. 监听上传完成事件
+            xhr.addEventListener('load', function() {
+                progressContainer.style.display = 'none'; // 隐藏进度条
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        onFinish(true, response); // 调用成功回调
+                    } catch (e) {
+                        onFinish(false, { error: '服务器返回数据格式错误。' });
+                    }
+                } else {
+                    onFinish(false, { error: '服务器错误: ' + xhr.status });
+                }
+            });
+            
+            // 4. 监听错误事件
+            xhr.addEventListener('error', function() {
+                progressContainer.style.display = 'none';
+                onFinish(false, { error: '上传过程中发生网络错误。' });
+            });
+            
+            // 5. 发送请求
+            progressContainer.style.display = 'block'; // 显示进度条
+            progressBarFill.style.width = '0%'; // 重置
+            progressText.textContent = '0%';
+            
+            // 尝试从formData中获取文件名并显示
+            const filesToUpload = formData.getAll('files');
+            if (filesToUpload.length > 0) {
+                if (filesToUpload.length === 1 && filesToUpload[0] instanceof File) {
+                    uploadFileName.textContent = filesToUpload[0].name;
+                } else {
+                    const firstFileName = filesToUpload[0] instanceof File ? filesToUpload[0].name : '文件/文件夹';
+                    uploadFileName.textContent = `${firstFileName} 等 ${filesToUpload.length} 项`;
+                }
+            } else {
+                uploadFileName.textContent = '未知文件'; // 兜底
+            }
+            
+            xhr.open('POST', url, true);
+            const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+            xhr.setRequestHeader('X-CSRFToken', csrfToken);
+            xhr.send(formData);
+        }
+        // =================================================================
+        // #1: 文件夹上传逻辑 - 保持不变
+        // =================================================================
+        const folderUploadInput = document.getElementById('folder_upload_input');
+        if (folderUploadInput) {
+            folderUploadInput.addEventListener('change', function(event) {
+                const files = event.target.files;
+                if (files.length === 0) return;
+
+                const formData = new FormData();
+                const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                const relativePaths = [];
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('files', files[i]);
+                    relativePaths.push(files[i].webkitRelativePath);
+                }
+                formData.append('relative_paths', JSON.stringify(relativePaths));
+
+                const uploadUrl = "{% if current_folder %}{% url 'album:upload_folder_subfolder' current_folder.id %}{% else %}{% url 'album:upload_folder_root' %}{% endif %}";
+                const uploadLabel = document.getElementById('folder_upload_label');
+                const originalText = uploadLabel.textContent;
+                uploadLabel.textContent = '上传中...';
+
+                uploadWithProgress(uploadUrl, formData, (success, response) => {
+                    if (success) {
+                        window.location.reload();
+                    } else {
+                        alert('上传失败: ' + response.error);
+                    }
+                    uploadLabel.textContent = originalText;
+                });
+            });
+        }
+        
+        // =================================================================
+        // 文件上传表单逻辑 - 【关键检查点】确保这里触发了上传
+        // 原始代码是监听form的submit事件，但input type="file"没有默认的submit按钮
+        // 更常见的是监听input的change事件
+        // 我将修改这里，让它监听input的change事件，这样选择文件后会自动触发上传
+        // 如果你需要点击按钮才上传，请在HTML中添加一个 <button type="submit">
+        // 保持原样，通过JS监听file-upload-form的submit事件
+        // =================================================================
+        const fileUploadForm = document.getElementById('file-upload-form');
+        const fileUploadInput = fileUploadForm ? fileUploadForm.querySelector('input[type="file"][name="files"]') : null;
+
+        if (fileUploadInput) { // 确保input元素存在
+            fileUploadInput.addEventListener('change', function(event) {
+                const files = event.target.files;
+                if (files.length === 0) return; // 如果没有选择文件，则不执行
+
+                const url = fileUploadForm.action;
+                const formData = new FormData(fileUploadForm); // 直接从form创建FormData, 包含csrf_token
+
+                uploadWithProgress(url, formData, (success, response) => {
+                    if (success) { window.location.reload(); }
+                    else { alert('上传失败: ' + response.error); }
+                });
+            });
+        }
+        // 阻止表单默认提交，因为我们通过 JS 处理上传
+        if (fileUploadForm) {
+            fileUploadForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+            });
+        }
+
+
+        // =================================================================
+        // #2: 选择模式与批量操作核心逻辑 (增加诊断代码)
+        // 注意：这里的ID已修改为与base.html中的操作栏元素匹配
+        // =================================================================
+        console.log("【诊断】正在获取批量操作相关的DOM元素...");
+        const checkboxes = document.querySelectorAll('.item-checkbox');
+        // 确保这里引用的是base.html中的actionsBar ID
+        const actionsBar = document.getElementById('actionBar'); 
+        // 确保这里引用的是base.html中的selectedCount ID
+        const selectionCountSpan = document.getElementById('selectedCount'); 
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        
+        // --- 获取操作栏和模态框中的元素 ---
+        // 确保这里引用的是base.html中的downloadSelectedBtn ID
+        const downloadButton = document.getElementById('downloadSelectedBtn'); 
+        // 确保这里引用的是base.html中的moveBtn ID
+        const moveButton = document.getElementById('moveBtn'); 
+        // 确保这里引用的是base.html中的deleteBtn ID
+        const deleteButton = document.getElementById('deleteBtn'); 
+        // 注意：这里模态框的ID需要和base.html中的一致
+        const moveModal = document.getElementById('moveModal');
+        const folderListModal = moveModal ? moveModal.querySelector('#folder-list') : null;
+        const cancelMoveBtn = document.getElementById('cancelMoveBtn');
+        const confirmMoveBtn = document.getElementById('confirmMoveBtn');
+        
+        console.log(`【诊断】获取结果: 操作栏(actionsBar) -> ${actionsBar ? '成功' : '失败'}`);
+        console.log(`【诊断】获取结果: 找到了 ${checkboxes.length} 个项目复选框。`);
+
+        let selectedItems = { files: new Set(), folders: new Set() };
+        let destinationFolderId = null;
+
+        function updateActionsBar() {
+            const totalSelected = selectedItems.files.size + selectedItems.folders.size;
+            console.log(`【诊断】updateActionsBar() 被调用，总共选中了 ${totalSelected} 项。`);
+            
+            if (!actionsBar || !selectionCountSpan) {
+                console.error("【诊断】错误：无法找到 actionsBar 或 selectionCountSpan 元素！");
+                return;
+            }
+
+            if (totalSelected > 0) {
+                selectionCountSpan.textContent = `${totalSelected} 个项目已选中`; // 与base.html中的文本保持一致
+                actionsBar.style.display = 'flex';
+                console.log("【诊断】指令：显示操作栏。");
+            } else {
+                actionsBar.style.display = 'none';
+                console.log("【诊断】指令：隐藏操作栏。");
+                if(selectAllCheckbox) selectAllCheckbox.checked = false;
+            }
+        }
+
+        // =================================================================
+        // #3: 为各个元素绑定事件 (增加诊断代码) - 保持不变
+        // =================================================================
+
+        checkboxes.forEach((checkbox, index) => {
+            checkbox.addEventListener('change', function() {
+                console.log(`【诊断】第 ${index + 1} 个复选框的状态改变了！`);
+                
+                const container = this.closest('.item-container');
+                if (!container) {
+                    console.error("【诊断】错误：找不到父元素 .item-container！");
+                    return;
+                }
+
+                const id = container.dataset.id.split('-')[1];
+                const type = container.dataset.type;
+                console.log(`【诊断】项目信息 -> 类型: ${type}, ID: ${id}, 是否选中: ${this.checked}`);
+
+                if (this.checked) {
+                    selectedItems[type + 's'].add(id);
+                    container.classList.add('selected');
+                } else {
+                    selectedItems[type + 's'].delete(id);
+                    container.classList.remove('selected');
+                }
+                
+                console.log("【诊断】当前选中集合:", selectedItems);
+                
+                updateActionsBar();
+            });
+        });
+        
+        // --- 全选/全不选逻辑 ---
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                const isChecked = this.checked;
+                checkboxes.forEach(checkbox => {
+                    if (checkbox.checked !== isChecked) {
+                        checkbox.checked = isChecked;
+                        // 确保触发 change 事件来更新 selectedItems 和 UI
+                        checkbox.dispatchEvent(new Event('change')); 
+                    }
+                });
+            });
+        }
+        
+        // --- 打包下载按钮逻辑 ---
+        if (downloadButton) {
+            downloadButton.addEventListener('click', function() {
+                const totalSelected = selectedItems.files.size + selectedItems.folders.size;
+                if (totalSelected === 0) {
+                    alert('请先选择要下载的项目。');
+                    return;
+                }
+
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = "{% url 'album:batch_download' %}";
+                form.style.display = 'none';
+
+                const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+                const csrfInput = document.createElement('input');
+                csrfInput.type = 'hidden';
+                csrfInput.name = 'csrfmiddlewaretoken';
+                csrfInput.value = csrfToken;
+                form.appendChild(csrfInput);
+
+                selectedItems.files.forEach(id => {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'file_ids';
+                    input.value = id;
+                    form.appendChild(input);
+                });
+
+                selectedItems.folders.forEach(id => {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'folder_ids';
+                    input.value = id;
+                    form.appendChild(input);
+                });
+
+                document.body.appendChild(form);
+                form.submit();
+                document.body.removeChild(form);
+            });
+        }
+
+
+        // --- 移动按钮：打开并填充【层级】模态框 --- - 保持不变
+        if (moveButton) {
+             // 递归函数，用于创建带缩进的文件夹列表
+            function renderFolderTree(nodes, container, indent = 0) {
+                nodes.forEach(node => {
+                    const folderDiv = document.createElement('div');
+                    folderDiv.className = 'folder-item';
+                    folderDiv.style.paddingLeft = `${10 + indent * 20}px`; 
+                    folderDiv.textContent = '📁 ' + node.name;
+                    folderDiv.dataset.folderId = node.id;
+                    container.appendChild(folderDiv);
+                    if (node.children && node.children.length > 0) {
+                        renderFolderTree(node.children, container, indent + 1);
+                    }
+                });
+            }
+
+            moveButton.addEventListener('click', function() {
+                const totalSelected = selectedItems.files.size + selectedItems.folders.size;
+                if (totalSelected === 0) {
+                    alert('请先选择要移动的项目。');
+                    return;
+                }
+                folderListModal.innerHTML = ''; 
+                destinationFolderId = null; 
+                const rootOption = document.createElement('div');
+                rootOption.className = 'folder-item';
+                rootOption.style.paddingLeft = '10px';
+                rootOption.textContent = '根目录 (主页)';
+                rootOption.dataset.folderId = 'null';
+                folderListModal.appendChild(rootOption);
+                const folderTreeDataElement = document.getElementById('folder-tree-data');
+                const folderTree = JSON.parse(folderTreeDataElement.textContent);
+                renderFolderTree(folderTree, folderListModal);
+                if (moveModal) moveModal.classList.add('visible');
+            });
+        }
+
+        // --- 删除按钮：执行批量删除 --- - 保持不变
+        if (deleteButton) {
+            deleteButton.addEventListener('click', function() {
+                const totalSelected = selectedItems.files.size + selectedItems.folders.size;
+                if (totalSelected === 0) {
+                    alert('请先选择要删除的项目。');
+                    return;
+                }
+                if (!confirm(`确定要永久删除这 ${totalSelected} 个项目吗？\n\n警告：删除文件夹会一并删除其内部所有内容！`)) {
+                    return;
+                }
+                const dataToSend = {
+                    files: Array.from(selectedItems.files),
+                    folders: Array.from(selectedItems.folders)
+                };
+                const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+                fetch("{% url 'album:batch_delete' %}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json','X-CSRFToken': csrfToken},
+                    body: JSON.stringify(dataToSend)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('删除失败: ' + (data.error || '未知错误'));
+                    }
+                })
+                .catch(error => {
+                    console.error('批量删除时发生错误:', error);
+                    alert('删除过程中发生网络错误。');
+                });
+            });
+        }
+
+        // --- 模态框内部事件 --- - 保持不变
+        if (moveModal) {
+            // 这里已经确保了 cancelMoveBtn 和 confirmMoveBtn 在base.html中定义且ID正确
+            cancelMoveBtn.addEventListener('click', function() {
+                moveModal.classList.remove('visible');
+            });
+
+            folderListModal.addEventListener('click', function(event) {
+                const clickedItem = event.target.closest('.folder-item');
+
+                if (clickedItem) {
+                    this.querySelectorAll('.folder-item').forEach(item => item.classList.remove('selected-dest'));
+                    clickedItem.classList.add('selected-dest');
+                    destinationFolderId = clickedItem.dataset.folderId;
+                }
+            });
+
+            confirmMoveBtn.addEventListener('click', function() {
+                if (destinationFolderId === null) {
+                    alert('请选择一个目标文件夹。');
+                    return;
+                }
+                // 检查是否尝试将文件夹移动到其自身内部
+                let isMovingIntoSelf = false;
+                selectedItems.folders.forEach(selectedFolderId => {
+                    // 简单的检查：如果目标文件夹是选中的文件夹之一，则不允许
+                    // 更复杂的检查需要遍历文件夹树，判断目标是否是选中文件夹的子文件夹
+                    if (selectedFolderId === destinationFolderId) {
+                        isMovingIntoSelf = true;
+                    }
+                });
+
+                if (isMovingIntoSelf) {
+                    alert('不能将一个文件夹移动到它自己内部！');
+                    return;
+                }
+
+                const dataToSend = {
+                    files: Array.from(selectedItems.files),
+                    folders: Array.from(selectedItems.folders),
+                    destination: destinationFolderId === 'null' ? null : parseInt(destinationFolderId)
+                };
+                const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+                fetch("{% url 'album:batch_move' %}", {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json','X-CSRFToken': csrfToken},
+                    body: JSON.stringify(dataToSend)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('移动失败: ' + (data.error || '未知错误'));
+                    }
+                })
+                .catch(error => {
+                    console.error('批量移动时发生错误:', error);
+                    alert('移动过程中发生网络错误。');
+                });
+            });
+        }
+        
+        // =================================================================
+        // #4: 灯箱(Lightbox)预览功能逻辑 - 保持不变
+        // =================================================================
+        const lightbox = document.getElementById('lightbox');
+        if (lightbox) {
+            const lightboxMediaContainer = document.getElementById('lightbox-media-container');
+            const lightboxClose = document.querySelector('.lightbox-close');
+            const lightboxPrev = document.querySelector('.lightbox-prev');
+            const lightboxNext = document.querySelector('.lightbox-next');
+            const zoomInBtn = document.getElementById('zoomInBtn'); // base.html中是zoomInBtn，不是zoom-in-btn
+            const zoomOutBtn = document.getElementById('zoomOutBtn'); // base.html中是zoomOutBtn，不是zoom-out-btn
+            const rotateLeftBtn = document.getElementById('rotateLeftBtn');
+            const rotateRightBtn = document.getElementById('rotateRightBtn');
+            // 注意：base.html中没有zoomResetBtn，如果你需要，需要手动添加
+            // const zoomResetBtn = document.getElementById('zoom-reset-btn'); 
+            let previewableItems = [];
+            let currentIndex = -1;
+            let currentScale = 1.0;
+            let currentRotation = 0; // 新增：旋转角度
+            let mediaElement = null;
+
+            const filesDataElement = document.getElementById('files-data');
+            const filesList = JSON.parse(filesDataElement.textContent);
+            const filesMap = new Map(filesList.map(file => [String(file.id), file]));
+
+            document.querySelectorAll('.file-item .preview a').forEach(link => {
+                const container = link.closest('.item-container');
+                const itemType = container.dataset.type;
+
+                if (itemType === 'file') {
+                    const fileId = container.dataset.id.split('-')[1];
+
+                    const file = filesMap.get(fileId);
+                    if (!file) return;
+
+                    const url = file.url.toLowerCase();
+                    let mediaType = 'other';
+                    // 修正文件类型判断，确保gif也被正确识别为image
+                    if (url.match(/\.(jpeg|jpg|gif|png|webp|heic|heif)$/)) {
+                        mediaType = 'image';
+                    } else if (url.match(/\.(mp4|webm|ogg|mov)$/)) {
+                        mediaType = 'video';
+                    }
+
+                    if (mediaType === 'image' || mediaType === 'video') {
+                        const itemIndex = previewableItems.length;
+                        previewableItems.push({ type: mediaType, src: file.url });
+
+                        link.addEventListener('click', function(event) {
+                            event.preventDefault();
+                            openLightbox(itemIndex);
+                        });
+                    }
+                }
+            });
+            
+            function applyTransform() { 
+                if(mediaElement) { 
+                    mediaElement.style.transform = `scale(${currentScale}) rotate(${currentRotation}deg)`; 
+                } 
+            }
+            
+            function openLightbox(index) {
+                if (index < 0 || index >= previewableItems.length) return;
+                currentIndex = index;
+                const item = previewableItems[currentIndex];
+                lightboxMediaContainer.innerHTML = ''; 
+                currentScale = 1.0; 
+                currentRotation = 0; // 重置旋转角度
+                
+                if (item.type === 'image') {
+                    mediaElement = document.createElement('img');
+                    mediaElement.src = item.src;
+                } else if (item.type === 'video') {
+                    mediaElement = document.createElement('video');
+                    mediaElement.src = item.src;
+                    mediaElement.controls = true;
+                    mediaElement.autoplay = true;
+                    mediaElement.style.maxWidth = '90vw';
+                    mediaElement.style.maxHeight = '90vh';
+                }
+
+                if (mediaElement) {
+                    lightboxMediaContainer.appendChild(mediaElement);
+                }
+
+                applyTransform();
+                lightbox.style.display = 'flex';
+                document.addEventListener('keydown', handleKeyboardNav);
+            }
+            
+            function closeLightbox() {
+                lightbox.style.display = 'none';
+                if (mediaElement && mediaElement.tagName === 'VIDEO') {
+                    mediaElement.pause();
+                }
+                mediaElement = null; 
+                document.removeEventListener('keydown', handleKeyboardNav);
+            }
+
+            function changeSlide(n) {
+                let newIndex = currentIndex + n;
+                if (newIndex >= previewableItems.length) { newIndex = 0; }
+                else if (newIndex < 0) { newIndex = previewableItems.length - 1; }
+                openLightbox(newIndex);
+            }
+            
+            function handleKeyboardNav(e) {
+                if (e.key === 'ArrowRight') { changeSlide(1); }
+                else if (e.key === 'ArrowLeft') { changeSlide(-1); }
+                else if (e.key === 'Escape') { closeLightbox(); }
+            }
+            
+            lightboxClose.addEventListener('click', closeLightbox);
+            lightboxPrev.addEventListener('click', () => changeSlide(-1));
+            lightboxNext.addEventListener('click', () => changeSlide(1));
+            // 点击背景关闭灯箱
+            lightbox.addEventListener('click', function(event) { 
+                // 确保点击的是背景本身，而不是内部的媒体或控件
+                if (event.target === lightbox || event.target === lightboxMediaContainer || event.target === lightbox.querySelector('.lightbox-image-wrapper')) { 
+                    closeLightbox(); 
+                } 
+            });
+            // 确保放大缩小旋转按钮在base.html中的ID是正确的
+            if (zoomInBtn) zoomInBtn.addEventListener('click', function() { currentScale += 0.2; applyTransform(); });
+            if (zoomOutBtn) zoomOutBtn.addEventListener('click', function() { currentScale = Math.max(0.2, currentScale - 0.2); applyTransform(); });
+            // 如果你需要在base.html中添加重置按钮
+            // if (zoomResetBtn) zoomResetBtn.addEventListener('click', function() { currentScale = 1.0; currentRotation = 0; applyTransform(); });
+            if (rotateLeftBtn) rotateLeftBtn.addEventListener('click', function() { currentRotation = (currentRotation - 90) % 360; applyTransform(); });
+            if (rotateRightBtn) rotateRightBtn.addEventListener('click', function() { currentRotation = (currentRotation + 90) % 360; applyTransform(); });
+        }
+
+
+        // =================================================================
+        // #6: 重命名功能逻辑 - 保持不变
+        // =================================================================
+        document.querySelectorAll('.editable-name').forEach(nameSpan => {
+        nameSpan.addEventListener('dblclick', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const container = this.closest('.item-container');
+            const originalName = this.textContent.trim();
+            const itemType = container.dataset.type;
+            
+            // 对于文件，尝试剥离扩展名
+            let nameWithoutExt = originalName;
+            let extension = '';
+            if (itemType === 'file') {
+                const lastDotIndex = originalName.lastIndexOf('.');
+                if (lastDotIndex > 0) { // 确保不是以.开头，且有扩展名
+                    nameWithoutExt = originalName.substring(0, lastDotIndex);
+                    extension = originalName.substring(lastDotIndex);
+                }
+            }
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = nameWithoutExt;
+            input.className = 'rename-input'; // 使用现有的或新增的CSS类
+            input.style.padding = '2px 5px';
+            input.style.border = '1px solid #007bff';
+            input.style.borderRadius = '4px';
+            input.style.width = 'calc(100% - 10px)'; // 适应父容器
+            input.style.boxSizing = 'border-box';
+
+
+            this.style.display = 'none';
+            // 将input插入到span的前面
+            this.parentElement.insertBefore(input, this);
+            input.focus();
+            input.select();
+
+            const confirmOrCancel = (event) => {
+                // 如果是按键事件，只处理 Enter 和 Escape
+                if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== 'Escape') {
+                    return;
+                }
+                
+                const newName = input.value.trim();
+                let finalNewName = newName;
+
+                // 如果是文件，需要加上原来的扩展名
+                if (itemType === 'file' && extension) {
+                    finalNewName = newName + extension;
+                }
+                
+                // 如果是 Escape 键，或者新名字与原名字（剥离扩展名后）相同，或者新名字为空
+                if (event.key === 'Escape' || newName === nameWithoutExt || newName === "") {
+                    cleanup();
+                    return;
+                }
+                
+                const itemId = container.dataset.id.split('-')[1];
+                const csrfToken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+
+                fetch("{% url 'album:rename_item' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        item_id: itemId,
+                        item_type: itemType,
+                        new_name: finalNewName // 提交带扩展名的完整新名称
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        nameSpan.textContent = data.new_name; // 服务器返回的完整新名称
+                    } else {
+                        alert('重命名失败: ' + data.error);
+                    }
+                    cleanup();
+                })
+                .catch(error => {
+                    console.error("重命名时出错:", error);
+                    alert("重命名时发生网络错误。");
+                    cleanup();
+                });
+            };
+            
+            const cleanup = () => {
+                input.removeEventListener('blur', confirmOrCancel);
+                input.removeEventListener('keydown', confirmOrCancel);
+                if(input.parentElement) {
+                    input.parentElement.removeChild(input);
+                }
+                nameSpan.style.display = 'inline';
+            };
+
+            input.addEventListener('blur', confirmOrCancel);
+            input.addEventListener('keydown', confirmOrCancel);
+        });
+    });
+    });
+</script>
+{% endblock %}
